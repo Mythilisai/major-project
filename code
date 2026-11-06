@@ -1,0 +1,150 @@
+iq_generator: 
+module 
+iq_generator( input clk, 
+input rst, 
+output reg signed [15:0] I_tx, 
+output reg signed [15:0] Q_tx 
+); 
+reg [2:0] addr; 
+always @(posedge clk or posedge rst) 
+begin 
+if(rst) 
+addr <= 0; 
+else 
+addr <= addr + 1; 
+end 
+always @(*) 
+begin 
+case(addr) 
+3'd0: begin I_tx = 1000; Q_tx = 0; end 
+3'd1: begin I_tx = 707; Q_tx = 707; end 
+3'd2: begin I_tx = 0; Q_tx = 1000; end 
+3'd3: begin I_tx = -707; Q_tx = 707; end 
+3'd4: begin I_tx = -1000;Q_tx = 0; end 
+
+Automatic Phase Estimation and Correction in OFDM Using FPGA 
+3'd5: begin I_tx = -707; Q_tx = -707; end 
+3'd6: begin I_tx = 0; Q_tx = -1000; end 
+3'd7: begin I_tx = 707; Q_tx = -707; end 
+endcase 
+end 
+Endmodule 
+phase_channel: 
+module 
+phase_channel( input signed 
+[15:0] I_tx, input signed 
+[15:0] Q_tx, output signed 
+[15:0] I_rx, output signed 
+[15:0] Q_rx ); parameter 
+COS = 866; parameter SIN 
+= 500; 
+assign I_rx = (I_txCOS - Q_txSIN)/1000; assign Q_rx = (I_txSIN + Q_txCOS)/1000; 
+Endmodule 
+phase_estimator: 
+module phase_estimator( input signed [15:0] I_tx, 
+input signed [15:0] Q_tx, 
+input signed [15:0] I_rx, 
+input signed [15:0] Q_rx, 
+output signed [31:0] phase ); 
+wire signed [31:0] num; 
+wire signed [31:0] den; 
+assign num = (I_txQ_rx) - (Q_txI_rx); 
+ 
+Automatic Phase Estimation and Correction in OFDM Using FPGA 
+assign den = (I_txI_rx) + (Q_txQ_rx); 
+assign phase = (den!=0) ? (num*1000)/den : 0; 
+Endmodule 
+phase_corrector: 
+module 
+phase_corrector( input 
+signed [15:0] I_rx, input 
+signed [15:0] Q_rx, input 
+signed [31:0] phase, 
+output signed [15:0] I_corr, 
+output signed [15:0] Q_corr 
+); 
+reg signed [15:0] cos_val; 
+reg signed [15:0] sin_val; 
+always @(*) begin 
+if (phase < 200) begin 
+cos_val = 1000; 
+sin_val = 0; // ~0° 
+end 
+else if (phase < 700) begin 
+cos_val = 866; 
+sin_val = 500; // ~30° 
+end 
+else if (phase < 1200) begin 
+cos_val = 707; 
+sin_val = 707; // ~45° 
+
+Automatic Phase Estimation and Correction in OFDM Using FPGA 
+End 
+else begin 
+cos_val = 0; 
+sin_val = 1000; // ~90° 
+end 
+end 
+wire signed [31:0] tempI; 
+wire signed [31:0] tempQ; 
+assign tempI = (I_rxcos_val + Q_rxsin_val)/1000; 
+assign tempQ = (-I_rxsin_val + Q_rxcos_val)/1000; 
+assign I_corr = tempI[15:0]; 
+assign Q_corr = tempQ[15:0]; 
+Endmodule 
+ofdm_phase_system: 
+module 
+ofdm_phase_system( input 
+clk, 
+input rst, 
+// Debug outputs (optional for simulation / ILA) 
+output signed [15:0] I_tx, 
+output signed [15:0] Q_tx, 
+output signed [15:0] I_rx, 
+output signed [15:0] Q_rx, 
+output signed [31:0] phase, 
+output signed [15:0] I_corr, 
+output signed [15:0] Q_corr,); 
+ 
+Automatic Phase Estimation and Correction in OFDM Using FPGA 
+// 
+// IQ Generator (Transmitter) 
+// 
+iq_generator gen( 
+.clk(clk), 
+.rst(rst), 
+.I_tx(I_tx), 
+.Q_tx(Q_tx) 
+); 
+// 
+// Phase Channel (adds phase distortion) 
+// 
+phase_channel ch( 
+.I_tx(I_tx), 
+.Q_tx(Q_tx), 
+.I_rx(I_rx), 
+.Q_rx(Q_rx) 
+); 
+// 
+// Phase Estimator (automatic) 
+// 
+phase_estimator est( 
+.I_tx(I_tx), 
+.Q_tx(Q_tx), 
+.I_rx(I_rx), 
+
+Automatic Phase Estimation and Correction in OFDM Using FPGA 
+.Q_rx(Q_rx), 
+.phase(phase) 
+); 
+// 
+// Automatic Phase Corrector (LUT-based) 
+// 
+phase_corrector cor( 
+.I_rx(I_rx), 
+.Q_rx(Q_rx), 
+.phase(phase), 
+.I_corr(I_corr), 
+.Q_corr(Q_corr) 
+); 
+endmodule
